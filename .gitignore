@@ -1,0 +1,6 @@
+.DS_Store
+
+# Local reference images converted from the photographed rule sheet.
+# The game itself does not load these files.
+assets/
+

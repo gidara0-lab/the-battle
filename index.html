@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The Battle</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="play-area" aria-label="게임 보드">
+        <div class="board-header">
+          <div>
+            <p class="eyebrow">The Battle</p>
+            <h1>더 배틀</h1>
+          </div>
+          <div class="turn-card" id="turnCard">
+            <span id="turnLabel">준비 중</span>
+            <strong id="turnPlayer">-</strong>
+          </div>
+        </div>
+
+        <div class="board-wrap">
+          <div class="side-field blue-field" aria-hidden="true"></div>
+          <div class="board" id="board" role="grid" aria-label="더 배틀 보드"></div>
+          <div class="side-field red-field" aria-hidden="true"></div>
+        </div>
+      </section>
+
+      <aside class="panel" aria-label="게임 정보">
+        <div class="panel-section status-section">
+          <div class="round-summary">
+            <div>
+              <span>라운드</span>
+              <strong id="roundLabel">1</strong>
+            </div>
+            <div>
+              <span>게임</span>
+              <strong id="gameLabel">1 / 2</strong>
+            </div>
+            <div>
+              <span>선공</span>
+              <strong id="firstPlayerLabel">레드</strong>
+            </div>
+          </div>
+          <div class="clock-grid" aria-label="대국 타이머">
+            <div class="clock red-clock" id="redClockCard">
+              <span><span class="dot red"></span>레드</span>
+              <strong id="redTimer">10:00</strong>
+            </div>
+            <div class="clock blue-clock" id="blueClockCard">
+              <span><span class="dot blue"></span>블루</span>
+              <strong id="blueTimer">10:00</strong>
+            </div>
+          </div>
+          <div class="stone-counts">
+            <div>
+              <span class="dot red"></span>
+              <span>레드</span>
+              <strong id="redCount">36</strong>
+            </div>
+            <div>
+              <span class="dot blue"></span>
+              <span>블루</span>
+              <strong id="blueCount">36</strong>
+            </div>
+          </div>
+          <p class="message" id="message">난이도 어려움으로 시작합니다.</p>
+        </div>
+
+        <div class="panel-section">
+          <h2>설정</h2>
+          <div class="segmented" role="group" aria-label="내 돌 색상">
+            <button id="playBlue" class="segment active" type="button">내 돌 블루</button>
+            <button id="playRed" class="segment" type="button">내 돌 레드</button>
+          </div>
+          <button id="newGame" class="primary-button" type="button">새 라운드</button>
+          <button id="nextGame" class="secondary-button" type="button" hidden>2게임 시작</button>
+        </div>
+
+        <div class="panel-section rules">
+          <h2>구현 규칙</h2>
+          <ul>
+            <li>한 라운드는 2게임입니다. 1게임은 레드 선공, 2게임은 블루 선공입니다.</li>
+            <li>한 게임마다 레드와 블루에게 각각 10분의 시간이 주어집니다.</li>
+            <li>가로, 대각선, 세로 축 중 한 줄에 자신의 돌 5개 이상이면 승리합니다.</li>
+            <li>상대의 연속된 돌 2개를 양끝에서 감싸면 그중 1개를 제거합니다.</li>
+            <li>돌이 제거된 플레이어는 다음 차례에 그 칸을 바로 사용할 수 없습니다.</li>
+            <li>더블 샌드위치는 제외하고, 한 수에 하나의 샌드위치만 처리합니다.</li>
+          </ul>
+        </div>
+
+        <div class="panel-section">
+          <h2>기록</h2>
+          <ol class="log" id="log"></ol>
+        </div>
+      </aside>
+    </main>
+
+    <script src="./game.js"></script>
+  </body>
+</html>
