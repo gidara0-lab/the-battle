@@ -9,7 +9,7 @@ const INF = 1_000_000_000;
 const DRAW = "D";
 const GAME_TIME_MS = 10 * 60 * 1000;
 const FIRST_PLAYERS = [RED, BLUE];
-const MAX_SEARCH_BRANCH = 34;
+const MAX_SEARCH_BRANCH = 38;
 
 const boardEl = document.getElementById("board");
 const messageEl = document.getElementById("message");
@@ -614,6 +614,18 @@ function findTacticalMove(input, legalMoves, color) {
     return orderMoves(opponentWinningMoves, input, color)[0];
   }
 
+  const forkMove = legalMoves
+    .map((id) => ({ id, threats: countWinningThreatsAfterMove(input, id, color) }))
+    .filter((item) => item.threats >= 2)
+    .sort((a, b) => b.threats - a.threats || quickMoveScore(input, b.id, color) - quickMoveScore(input, a.id, color))[0];
+  if (forkMove) return forkMove.id;
+
+  const opponentFork = legalMoves
+    .map((id) => ({ id, threats: countWinningThreatsAfterMove(input, id, opponent) }))
+    .filter((item) => item.threats >= 2)
+    .sort((a, b) => b.threats - a.threats || quickMoveScore(input, b.id, color) - quickMoveScore(input, a.id, color))[0];
+  if (opponentFork && input.turnCount > 5) return opponentFork.id;
+
   const strongCapture = legalMoves
     .map((id) => {
       const board = input.board.slice();
@@ -624,6 +636,12 @@ function findTacticalMove(input, legalMoves, color) {
     .sort((a, b) => quickMoveScore(input, b.id, color) - quickMoveScore(input, a.id, color))[0];
 
   return strongCapture && input.turnCount > 6 ? strongCapture.id : null;
+}
+
+function countWinningThreatsAfterMove(input, id, color) {
+  if (!isLegalMove(input, id, color)) return 0;
+  const next = simulateMove(input, id, color);
+  return legalMovesFor(next, color).filter((move) => moveCreatesWin(next.board, move, color)).length;
 }
 
 function moveCreatesWin(board, id, color) {
@@ -779,12 +797,15 @@ function quickMoveScore(input, id, color) {
 
   score += longestFrom(board, id, color) * 500;
   score += localThreatScore(board, id, color) * 1.25;
+  score += boardWindowScore(board, color) * 0.16;
 
   board[id] = opponent;
   score += localThreatScore(board, id, opponent) * 1.1;
+  score += boardWindowScore(board, opponent) * 0.18;
   board[id] = color;
 
   score += detectSandwiches(board, id, color).length * 1_800;
+  score += countWinningThreatsAfterMove(input, id, color) * 18_000;
 
   const cell = cells[id];
   const center = { row: 5, col: 4.5 };
@@ -804,9 +825,66 @@ function localThreatScore(board, id, color) {
   return score;
 }
 
+function boardWindowScore(board, color) {
+  const opponent = opponentOf(color);
+  let total = 0;
+
+  for (const line of allLineIds()) {
+    if (line.length < 5) continue;
+    for (let start = 0; start <= line.length - 5; start += 1) {
+      const windowIds = line.slice(start, start + 5);
+      let own = 0;
+      let blocked = false;
+      for (const id of windowIds) {
+        if (board[id] === opponent) {
+          blocked = true;
+          break;
+        }
+        if (board[id] === color) own += 1;
+      }
+      if (blocked || own === 0) continue;
+
+      const before = line[start - 1];
+      const after = line[start + 5];
+      const openEnds = Number(before !== undefined && board[before] === EMPTY) + Number(after !== undefined && board[after] === EMPTY);
+      total += windowScore(own, openEnds);
+    }
+  }
+
+  return total;
+}
+
+function allLineIds() {
+  const lines = [];
+  for (const dir of directions) {
+    for (const cell of cells) {
+      const previous = step(cell.id, dir, -1);
+      if (previous !== null) continue;
+
+      const line = [];
+      let cursor = cell.id;
+      while (cursor !== null) {
+        line.push(cursor);
+        cursor = step(cursor, dir, 1);
+      }
+      if (line.length >= 2) lines.push(line);
+    }
+  }
+  return lines;
+}
+
+function windowScore(own, openEnds) {
+  if (own >= 5) return INF / 3;
+  if (own === 4) return openEnds === 2 ? 95_000 : 26_000;
+  if (own === 3) return openEnds === 2 ? 8_800 : 1_900;
+  if (own === 2) return openEnds === 2 ? 720 : 160;
+  return openEnds === 2 ? 28 : 8;
+}
+
 function evaluateState(input, maximizer) {
   const opponent = opponentOf(maximizer);
   let score = evaluateColor(input.board, maximizer) - evaluateColor(input.board, opponent) * 1.08;
+  score += boardWindowScore(input.board, maximizer) - boardWindowScore(input.board, opponent) * 1.12;
   score += (MAX_STONES - input.remaining[maximizer]) * 4;
   score -= (MAX_STONES - input.remaining[opponent]) * 4;
   if (input.forbidden[opponent] !== null) score += 45;
