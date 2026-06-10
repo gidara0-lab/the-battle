@@ -833,10 +833,13 @@ function quickMoveScore(input, id, color) {
   score += longestFrom(board, id, color) * 500;
   score += localThreatScore(board, id, color) * 1.25;
   score += boardWindowScore(board, color) * 0.16;
+  score += stretchTwoScore(board, color) * 0.55;
+  score -= pairRiskScore(board, color) * 0.85;
 
   board[id] = opponent;
   score += localThreatScore(board, id, opponent) * 1.1;
   score += boardWindowScore(board, opponent) * 0.18;
+  score += pairRiskScore(board, opponent) * 0.75;
   board[id] = color;
   score += moveDeniesOpponentThreat(input, id, color) * 6_500;
 
@@ -907,6 +910,54 @@ function boardWindowScore(board, color) {
   return total;
 }
 
+function pairRiskScore(board, color) {
+  const opponent = opponentOf(color);
+  let total = 0;
+
+  for (const line of allLineIds()) {
+    for (let i = 0; i <= line.length - 2; i += 1) {
+      const first = line[i];
+      const second = line[i + 1];
+      if (board[first] !== color || board[second] !== color) continue;
+
+      const before = line[i - 1];
+      const after = line[i + 2];
+      const beforeValue = before === undefined ? "EDGE" : board[before];
+      const afterValue = after === undefined ? "EDGE" : board[after];
+      const canCaptureLeft = beforeValue === EMPTY && afterValue === opponent;
+      const canCaptureRight = beforeValue === opponent && afterValue === EMPTY;
+      const openBoth = beforeValue === EMPTY && afterValue === EMPTY;
+
+      if (canCaptureLeft || canCaptureRight) total += 5_400;
+      else if (openBoth) total += 420;
+    }
+  }
+
+  return total;
+}
+
+function stretchTwoScore(board, color) {
+  const opponent = opponentOf(color);
+  let total = 0;
+
+  for (const line of allLineIds()) {
+    for (let i = 0; i <= line.length - 3; i += 1) {
+      const left = line[i];
+      const middle = line[i + 1];
+      const right = line[i + 2];
+      if (board[left] !== color || board[middle] !== EMPTY || board[right] !== color) continue;
+
+      const before = line[i - 1];
+      const after = line[i + 3];
+      const beforeOpen = before !== undefined && board[before] !== opponent;
+      const afterOpen = after !== undefined && board[after] !== opponent;
+      total += beforeOpen && afterOpen ? 1_450 : 420;
+    }
+  }
+
+  return total;
+}
+
 function allLineIds() {
   if (lineIdsCache) return lineIdsCache;
 
@@ -941,6 +992,9 @@ function evaluateState(input, maximizer) {
   const opponent = opponentOf(maximizer);
   let score = evaluateColor(input.board, maximizer) - evaluateColor(input.board, opponent) * 1.08;
   score += boardWindowScore(input.board, maximizer) - boardWindowScore(input.board, opponent) * 1.12;
+  score += stretchTwoScore(input.board, maximizer) * 0.45 - stretchTwoScore(input.board, opponent) * 0.55;
+  score -= pairRiskScore(input.board, maximizer) * 0.9;
+  score += pairRiskScore(input.board, opponent) * 0.72;
   score += (MAX_STONES - input.remaining[maximizer]) * 4;
   score -= (MAX_STONES - input.remaining[opponent]) * 4;
   if (input.forbidden[opponent] !== null) score += 45;
