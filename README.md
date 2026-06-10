@@ -24,7 +24,7 @@ http://localhost:5173
 - 각 게임마다 레드/블루 10분 보드게임 타이머
 - 빈칸 없이 붙은 5개 연결 승리
 - 샌드위치 규칙
-- 더블 샌드위치는 제외
+- 더블 샌드위치: 잡힌 돌 4개 중 1개 제거
 
 ## GitHub Pages 배포
 
@@ -35,4 +35,3 @@ http://localhost:5173
 3. `Build and deployment`에서 `Deploy from a branch` 선택
 4. Branch를 `main`, 폴더를 `/root`로 선택
 5. 저장 후 제공되는 Pages URL로 접속
-

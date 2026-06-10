@@ -39,6 +39,7 @@ const playRedBtn = document.getElementById("playRed");
 const cells = [];
 const cellByKey = new Map();
 const buttons = [];
+let lineIdsCache = null;
 const directions = [
   [0, 1],
   [1, 0],
@@ -67,6 +68,7 @@ function setupGeometry() {
       cellByKey.set(`${row}:${col}`, id);
     }
   });
+  lineIdsCache = null;
 }
 
 function makeInitialState(firstPlayer = RED) {
@@ -311,23 +313,26 @@ function placeStone(id, color, options = {}) {
 
   const sandwiches = detectSandwiches(state.board, id, color);
   if (sandwiches.length) {
-    const first = sandwiches[0].pair;
+    const choices = captureChoicesFromSandwiches(sandwiches);
     if (sandwiches.length > 1) {
-      state.log.push("더블 샌드위치 상황이지만 한 번만 처리합니다.");
+      state.log.push("더블 샌드위치: 잡힌 돌 중 하나를 선택합니다.");
     }
 
     if (color === humanColor) {
       pendingCapture = {
         color,
         victimColor: opponentOf(color),
-        choices: first,
+        choices,
       };
-      messageEl.textContent = "샌드위치 성공. 강조된 상대 돌 중 하나를 제거하세요.";
+      messageEl.textContent =
+        sandwiches.length > 1
+          ? "더블 샌드위치 성공. 강조된 상대 돌 중 하나를 제거하세요."
+          : "샌드위치 성공. 강조된 상대 돌 중 하나를 제거하세요.";
       render();
       return true;
     }
 
-    const captureId = chooseAiCapture(first, opponentOf(color));
+    const captureId = chooseAiCapture(choices, opponentOf(color));
     applyCapture(captureId, color);
     endTurn();
     return true;
@@ -351,6 +356,10 @@ function applyCapture(id, color) {
   state.forbidden[victim] = id;
   state.log.push(`${labelOf(color)} 샌드위치: ${coordLabel(id)} 제거`);
   messageEl.textContent = `${labelOf(color)}가 샌드위치로 돌 하나를 제거했습니다.`;
+}
+
+function captureChoicesFromSandwiches(sandwiches) {
+  return [...new Set(sandwiches.flatMap((sandwich) => sandwich.pair))];
 }
 
 function finishGame(winner, message) {
@@ -626,16 +635,42 @@ function findTacticalMove(input, legalMoves, color) {
     .sort((a, b) => b.threats - a.threats || quickMoveScore(input, b.id, color) - quickMoveScore(input, a.id, color))[0];
   if (opponentFork && input.turnCount > 5) return opponentFork.id;
 
+  const urgentThreatBlock = bestUrgentThreatBlock(input, legalMoves, color);
+  if (urgentThreatBlock !== null) return urgentThreatBlock;
+
   const strongCapture = legalMoves
     .map((id) => {
       const board = input.board.slice();
       board[id] = color;
-      return { id, captures: detectSandwiches(board, id, color).length };
+      const sandwiches = detectSandwiches(board, id, color);
+      return {
+        id,
+        captures: captureChoicesFromSandwiches(sandwiches).length,
+        groups: sandwiches.length,
+      };
     })
     .filter((item) => item.captures > 0)
-    .sort((a, b) => quickMoveScore(input, b.id, color) - quickMoveScore(input, a.id, color))[0];
+    .sort((a, b) => b.groups - a.groups || b.captures - a.captures || quickMoveScore(input, b.id, color) - quickMoveScore(input, a.id, color))[0];
 
-  return strongCapture && input.turnCount > 6 ? strongCapture.id : null;
+  return strongCapture && (input.turnCount > 6 || strongCapture.groups > 1) ? strongCapture.id : null;
+}
+
+function bestUrgentThreatBlock(input, legalMoves, color) {
+  const opponent = opponentOf(color);
+  const threats = legalMoves
+    .map((id) => {
+      const board = input.board.slice();
+      board[id] = opponent;
+      return {
+        id,
+        score: localThreatScore(board, id, opponent) + boardWindowScore(board, opponent) * 0.22,
+      };
+    })
+    .filter((item) => item.score >= 65_000)
+    .sort((a, b) => b.score - a.score);
+
+  if (!threats.length) return null;
+  return orderMoves(threats.map((item) => item.id), input, color)[0];
 }
 
 function countWinningThreatsAfterMove(input, id, color) {
@@ -753,7 +788,7 @@ function simulateMove(input, id, color) {
   const sandwiches = detectSandwiches(next.board, id, color);
   if (sandwiches.length) {
     const victim = opponentOf(color);
-    const capture = chooseBestSimCapture(next.board, sandwiches[0].pair, victim, color);
+    const capture = chooseBestSimCapture(next.board, captureChoicesFromSandwiches(sandwiches), victim, color);
     next.board[capture] = EMPTY;
     next.remaining[victim] += 1;
     next.forbidden[victim] = capture;
@@ -803,14 +838,32 @@ function quickMoveScore(input, id, color) {
   score += localThreatScore(board, id, opponent) * 1.1;
   score += boardWindowScore(board, opponent) * 0.18;
   board[id] = color;
+  score += moveDeniesOpponentThreat(input, id, color) * 6_500;
 
-  score += detectSandwiches(board, id, color).length * 1_800;
+  const sandwiches = detectSandwiches(board, id, color);
+  score += sandwiches.length * 2_300;
+  score += captureChoicesFromSandwiches(sandwiches).length * 650;
   score += countWinningThreatsAfterMove(input, id, color) * 18_000;
 
   const cell = cells[id];
   const center = { row: 5, col: 4.5 };
   score -= Math.abs(cell.row - center.row) * 12 + Math.abs(cell.col - center.col) * 8;
   return score;
+}
+
+function moveDeniesOpponentThreat(input, id, color) {
+  const opponent = opponentOf(color);
+  const before = localPotentialAt(input.board, id, opponent);
+  const after = input.board.slice();
+  after[id] = color;
+  return Math.max(0, before - localPotentialAt(after, id, opponent)) / 10_000;
+}
+
+function localPotentialAt(board, id, color) {
+  if (board[id] !== EMPTY) return 0;
+  const next = board.slice();
+  next[id] = color;
+  return localThreatScore(next, id, color);
 }
 
 function localThreatScore(board, id, color) {
@@ -855,6 +908,8 @@ function boardWindowScore(board, color) {
 }
 
 function allLineIds() {
+  if (lineIdsCache) return lineIdsCache;
+
   const lines = [];
   for (const dir of directions) {
     for (const cell of cells) {
@@ -870,7 +925,8 @@ function allLineIds() {
       if (line.length >= 2) lines.push(line);
     }
   }
-  return lines;
+  lineIdsCache = lines;
+  return lineIdsCache;
 }
 
 function windowScore(own, openEnds) {
@@ -935,15 +991,15 @@ function longestFrom(board, id, color) {
   return Math.max(...directions.map((dir) => collectLine(board, id, color, dir).length));
 }
 
-function chooseAiCapture(pair, victimColor) {
-  return chooseBestSimCapture(state.board, pair, victimColor, aiColor);
+function chooseAiCapture(choices, victimColor) {
+  return chooseBestSimCapture(state.board, choices, victimColor, aiColor);
 }
 
-function chooseBestSimCapture(board, pair, victimColor, capturer) {
-  let best = pair[0];
+function chooseBestSimCapture(board, choices, victimColor, capturer) {
+  let best = choices[0];
   let bestScore = -INF;
 
-  for (const id of pair) {
+  for (const id of choices) {
     const next = board.slice();
     next[id] = EMPTY;
     const score = evaluateColor(board, victimColor) - evaluateColor(next, victimColor) + evaluateColor(next, capturer) * 0.02;
