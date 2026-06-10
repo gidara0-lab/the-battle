@@ -20,6 +20,29 @@
           </div>
         </div>
 
+        <div class="mobile-hud" aria-label="모바일 경기 정보">
+          <div class="mobile-meta">
+            <div>
+              <span>게임</span>
+              <strong id="mobileGameLabel">1 / 2</strong>
+            </div>
+            <div>
+              <span>선공</span>
+              <strong id="mobileFirstPlayerLabel">레드</strong>
+            </div>
+          </div>
+          <div class="clock-grid mobile-clock-grid" aria-label="모바일 대국 타이머">
+            <div class="clock red-clock" id="mobileRedClockCard">
+              <span><span class="dot red"></span>레드</span>
+              <strong id="mobileRedTimer">10:00</strong>
+            </div>
+            <div class="clock blue-clock" id="mobileBlueClockCard">
+              <span><span class="dot blue"></span>블루</span>
+              <strong id="mobileBlueTimer">10:00</strong>
+            </div>
+          </div>
+        </div>
+
         <div class="board-wrap">
           <div class="side-field blue-field" aria-hidden="true"></div>
           <div class="board" id="board" role="grid" aria-label="더 배틀 보드"></div>
@@ -90,7 +113,7 @@
           </ul>
         </div>
 
-        <div class="panel-section">
+        <div class="panel-section log-section">
           <h2>기록</h2>
           <ol class="log" id="log"></ol>
         </div>

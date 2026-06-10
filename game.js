@@ -9,6 +9,7 @@ const INF = 1_000_000_000;
 const DRAW = "D";
 const GAME_TIME_MS = 10 * 60 * 1000;
 const FIRST_PLAYERS = [RED, BLUE];
+const MAX_SEARCH_BRANCH = 34;
 
 const boardEl = document.getElementById("board");
 const messageEl = document.getElementById("message");
@@ -23,6 +24,12 @@ const redTimerEl = document.getElementById("redTimer");
 const blueTimerEl = document.getElementById("blueTimer");
 const redClockCardEl = document.getElementById("redClockCard");
 const blueClockCardEl = document.getElementById("blueClockCard");
+const mobileGameLabelEl = document.getElementById("mobileGameLabel");
+const mobileFirstPlayerLabelEl = document.getElementById("mobileFirstPlayerLabel");
+const mobileRedTimerEl = document.getElementById("mobileRedTimer");
+const mobileBlueTimerEl = document.getElementById("mobileBlueTimer");
+const mobileRedClockCardEl = document.getElementById("mobileRedClockCard");
+const mobileBlueClockCardEl = document.getElementById("mobileBlueClockCard");
 const logEl = document.getElementById("log");
 const newGameBtn = document.getElementById("newGame");
 const nextGameBtn = document.getElementById("nextGame");
@@ -122,12 +129,20 @@ function render() {
   roundLabelEl.textContent = String(round.number);
   gameLabelEl.textContent = `${round.gameIndex + 1} / 2`;
   firstPlayerLabelEl.textContent = labelOf(state.firstPlayer);
+  mobileGameLabelEl.textContent = `${round.gameIndex + 1} / 2`;
+  mobileFirstPlayerLabelEl.textContent = labelOf(state.firstPlayer);
   redTimerEl.textContent = formatTime(state.timeLeft[RED]);
   blueTimerEl.textContent = formatTime(state.timeLeft[BLUE]);
+  mobileRedTimerEl.textContent = formatTime(state.timeLeft[RED]);
+  mobileBlueTimerEl.textContent = formatTime(state.timeLeft[BLUE]);
   redClockCardEl.classList.toggle("active", state.current === RED && !state.winner);
   blueClockCardEl.classList.toggle("active", state.current === BLUE && !state.winner);
+  mobileRedClockCardEl.classList.toggle("active", state.current === RED && !state.winner);
+  mobileBlueClockCardEl.classList.toggle("active", state.current === BLUE && !state.winner);
   redClockCardEl.classList.toggle("low", state.timeLeft[RED] <= 60_000);
   blueClockCardEl.classList.toggle("low", state.timeLeft[BLUE] <= 60_000);
+  mobileRedClockCardEl.classList.toggle("low", state.timeLeft[RED] <= 60_000);
+  mobileBlueClockCardEl.classList.toggle("low", state.timeLeft[BLUE] <= 60_000);
   nextGameBtn.hidden = !(state.winner && round.gameIndex === 0);
   playRedBtn.disabled = !state.winner && state.turnCount > 0;
   playBlueBtn.disabled = !state.winner && state.turnCount > 0;
@@ -553,18 +568,21 @@ function candidateMoves(board) {
 
 function findBestMove(input, color) {
   const legalMoves = legalMovesFor(input, color);
+  const tacticalMove = findTacticalMove(input, legalMoves, color);
+  if (tacticalMove !== null) return tacticalMove;
+
   const openingMove = chooseOpeningMove(input, legalMoves, color);
   if (openingMove !== null) return openingMove;
 
   const moves = orderMoves(legalMoves, input, color);
   if (!moves.length) return null;
 
-  const depth = moves.length <= 24 ? 3 : 2;
+  const depth = searchDepthFor(moves.length, input.turnCount);
   let bestMove = moves[0];
   let bestScore = -INF;
   let alpha = -INF;
 
-  for (const move of moves) {
+  for (const move of moves.slice(0, MAX_SEARCH_BRANCH)) {
     const next = simulateMove(input, move, color);
     const score = minimax(next, depth - 1, opponentOf(color), color, alpha, INF);
     if (score > bestScore) {
@@ -582,6 +600,44 @@ function findBestMove(input, color) {
   }
 
   return bestMove;
+}
+
+function findTacticalMove(input, legalMoves, color) {
+  if (!legalMoves.length) return null;
+  const opponent = opponentOf(color);
+
+  const winningMove = legalMoves.find((id) => moveCreatesWin(input.board, id, color));
+  if (winningMove !== undefined) return winningMove;
+
+  const opponentWinningMoves = legalMoves.filter((id) => moveCreatesWin(input.board, id, opponent));
+  if (opponentWinningMoves.length) {
+    return orderMoves(opponentWinningMoves, input, color)[0];
+  }
+
+  const strongCapture = legalMoves
+    .map((id) => {
+      const board = input.board.slice();
+      board[id] = color;
+      return { id, captures: detectSandwiches(board, id, color).length };
+    })
+    .filter((item) => item.captures > 0)
+    .sort((a, b) => quickMoveScore(input, b.id, color) - quickMoveScore(input, a.id, color))[0];
+
+  return strongCapture && input.turnCount > 6 ? strongCapture.id : null;
+}
+
+function moveCreatesWin(board, id, color) {
+  if (board[id] !== EMPTY) return false;
+  const next = board.slice();
+  next[id] = color;
+  return winningLineFrom(next, id, color).length >= 5;
+}
+
+function searchDepthFor(moveCount, turnCount) {
+  if (moveCount <= 14) return 4;
+  if (moveCount <= 32) return 3;
+  if (turnCount >= 10 && moveCount <= 46) return 3;
+  return 2;
 }
 
 function chooseOpeningMove(input, legalMoves, color) {
@@ -652,7 +708,7 @@ function minimax(input, depth, turn, maximizer, alpha, beta) {
 
   if (turn === maximizer) {
     let value = -INF;
-    for (const move of moves.slice(0, 30)) {
+    for (const move of moves.slice(0, MAX_SEARCH_BRANCH)) {
       value = Math.max(value, minimax(simulateMove(input, move, turn), depth - 1, opponentOf(turn), maximizer, alpha, beta));
       alpha = Math.max(alpha, value);
       if (alpha >= beta) break;
@@ -661,7 +717,7 @@ function minimax(input, depth, turn, maximizer, alpha, beta) {
   }
 
   let value = INF;
-  for (const move of moves.slice(0, 30)) {
+  for (const move of moves.slice(0, MAX_SEARCH_BRANCH)) {
     value = Math.min(value, minimax(simulateMove(input, move, turn), depth - 1, opponentOf(turn), maximizer, alpha, beta));
     beta = Math.min(beta, value);
     if (alpha >= beta) break;
@@ -722,11 +778,29 @@ function quickMoveScore(input, id, color) {
   board[id] = color;
 
   score += longestFrom(board, id, color) * 500;
+  score += localThreatScore(board, id, color) * 1.25;
+
+  board[id] = opponent;
+  score += localThreatScore(board, id, opponent) * 1.1;
+  board[id] = color;
+
   score += detectSandwiches(board, id, color).length * 1_800;
 
   const cell = cells[id];
   const center = { row: 5, col: 4.5 };
   score -= Math.abs(cell.row - center.row) * 12 + Math.abs(cell.col - center.col) * 8;
+  return score;
+}
+
+function localThreatScore(board, id, color) {
+  let score = 0;
+  for (const dir of directions) {
+    const line = collectLine(board, id, color, dir);
+    const before = step(line[0], dir, -1);
+    const after = step(line[line.length - 1], dir, 1);
+    const openEnds = Number(before !== null && board[before] === EMPTY) + Number(after !== null && board[after] === EMPTY);
+    score += lineScore(line.length, openEnds);
+  }
   return score;
 }
 
